@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart' as geolocator;
-import 'package:geolocator_platform_interface/src/enums/location_accuracy.dart' as geolocator_accuracy;
-import 'location services/Mappls_viewLive.dart';
-import 'location services/gmap.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:gps/api_services/location_api.dart';
+import 'package:gps/geolocator_Services/location_permission_services.dart';
+import 'package:gps/View live_location/gmap_live.dart';
+import 'package:gps/location view/Mappls_viewLive.dart';
+import 'dart:async';
+
 void main() {
   runApp(const MyApp());
 }
@@ -33,22 +36,47 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  String locationMessage = 'Current Location of the User';
+  final LocationService _locationService = LocationService();
+  Stream<Position>? _positionStream;
+  Position? _currentPosition;
+  String lat = '';
+  String long = '';
+  String locationMessage = '';
+  bool _hasPermission = false;
 
-  String lat = 'Unknown';
-  String long = 'Unknown';
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissionsAndFetchLocation();
+  }
 
-  Future<void> getlocation() async {
-    await geolocator.Geolocator.checkPermission();
-    await geolocator.Geolocator.requestPermission();
-    geolocator.Position position = await geolocator.Geolocator.getCurrentPosition(
-      desiredAccuracy: geolocator_accuracy.LocationAccuracy.high,
-    );
-    setState(() {
-      lat = position.latitude.toString();
-      long = position.longitude.toString();
-      locationMessage = 'Latitude: $lat, Longitude: $long';
-    });
+  Future<void> _checkPermissionsAndFetchLocation() async {
+    bool hasPermission = await _locationService.checkAndRequestPermission();
+    if (hasPermission) {
+      setState(() {
+        _hasPermission = true;
+        _positionStream = _locationService.getPositionStream();
+      });
+      _getCurrentLocation();
+    } else {
+      setState(() {
+        _hasPermission = false;
+      });
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      Position position = await _locationService.getCurrentPosition();
+      setState(() {
+        _currentPosition = position;
+        lat = position.latitude.toString();
+        long = position.longitude.toString();
+        locationMessage = 'Latitude: $lat, Longitude: $long';
+      });
+    } catch (e) {
+      print(e);
+    }
   }
 
   @override
@@ -59,41 +87,80 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
       ),
       body: Center(
-        child: Column(
+        child: _hasPermission
+            ? Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Text('Latitude: $lat'),
-            Text('Longitude: $long'),
-            Text(locationMessage),
+            //if (_currentPosition != null) Text(locationMessage),
+            SizedBox(height: 20),
+            StreamBuilder<Position>(
+              stream: _positionStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return CircularProgressIndicator();
+                } else if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
+                } else if (snapshot.hasData) {
+                  Position position = snapshot.data!;
+                  lat = position.latitude.toString();
+                  long = position.longitude.toString();
+                  String dateTime = DateTime.now().toIso8601String();
+                  print(dateTime);
+                  postLocationData({
+                    'latitude': position.latitude,
+                    'longitude': position.longitude,
+                    'dateTime': dateTime,
+                   }
+                  );
+
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Center(
+                        child: Text('Live Location'),
+                      ),
+                      Center(
+                        child: Text('Latitude: $lat, Longitude: $long'),
+                      ),
+                    ],
+                  );
+                } else {
+                  return Text('No position data');
+                }
+              },
+            ),
             SizedBox(height: 13),
             ElevatedButton(
-             onPressed:(){
-               Navigator.push(
-                 context,
-                 MaterialPageRoute(builder: (context) =>  GMap(),),
-               );
-             } ,//GoogleMap(),
-              //onPressed: _openGoogleMaps,
-            child: const Text('Open Location in Gmap'),
+              onPressed: _currentPosition != null
+                  ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => Gmap_Live(
+                      initialPosition: _currentPosition!,
+                      positionStream: _positionStream!,
+                    ),
+                  ),
+                );
+              }
+                  : null,
+              child: const Text('Open Live Location in Gmap'),
             ),
             SizedBox(height: 13),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) =>  Mappls_Live(),),
+                  MaterialPageRoute(
+                    builder: (context) => Mappls_Live(),
+                  ),
                 );
               },
               child: const Text('Open Location in Mappls'),
             ),
           ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          getlocation();
-        },
-        child: const Text('Get Location'),
+        )
+            : Text('Permission to access location is required.'),
       ),
     );
   }

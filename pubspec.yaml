@@ -36,6 +36,7 @@ dependencies:
   location: ^6.0.2
   url_launcher: ^6.0.20
   google_maps_flutter: ^2.5.3
+  http: ^1.1.0
 
 
   # The following adds the Cupertino Icons font to your application.
