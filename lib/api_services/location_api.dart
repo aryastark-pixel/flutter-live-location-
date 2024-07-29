@@ -27,16 +27,19 @@ Future<int> postLocationData(Map<String, dynamic> dataToSend) async {
   try {
     print('here inside the post');
     final response = await http.post(
+
       Uri.parse(apiUrl),
       body: json.encode(dataToSend), // Encode the data to JSON
       headers: {'Content-Type': 'application/json'}, // Set headers if needed
     );
-    if (response.statusCode == 200) {
+    if (response.statusCode == 201) {
+      print('successful');
       final jsonData = json.decode(response.body);
       print(jsonData.toString());
       return  response.statusCode;
     }
     else {
+      print('unsuccesful');
       final jsonData = json.decode(response.body);
       print(jsonData.toString());
       return response.statusCode;

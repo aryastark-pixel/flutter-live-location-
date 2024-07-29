@@ -1,14 +1,151 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gps/api_services/location_api.dart';
 import 'package:gps/geolocator_Services/location_permission_services.dart';
 import 'package:gps/View live_location/gmap_live.dart';
 import 'package:gps/location view/Mappls_viewLive.dart';
 import 'dart:async';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'dart:ui';
+
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  initializeService();
   runApp(const MyApp());
 }
+
+const notificationChannelId = 'my_foreground';
+const notificationId = 888;
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    notificationChannelId,
+    'MY FOREGROUND SERVICE',
+    description: 'This channel is used for important notifications.',
+    importance: Importance.high,
+  );
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: true,
+      isForegroundMode: true,
+      notificationChannelId: notificationChannelId,
+      initialNotificationTitle: 'AWESOME SERVICE',
+      initialNotificationContent: 'Initializing',
+      foregroundServiceNotificationId: notificationId,
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: true,
+      onForeground: onStart,
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<void> onStart(ServiceInstance service) async {
+  DartPluginRegistrant.ensureInitialized();
+
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+
+    service.on('stopService').listen((event) {
+      service.stopSelf();
+    });
+  }
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
+    if (service is AndroidServiceInstance) {
+      if (await service.isForegroundService()) {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+
+        flutterLocalNotificationsPlugin.show(
+          notificationId,
+          'Location Update',
+          'Location: ${position.latitude}, ${position.longitude}',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              notificationChannelId,
+              'MY FOREGROUND SERVICE',
+              icon: 'ic_bg_service_small',
+              ongoing: true,
+            ),
+          ),
+        );
+
+        // Save or process the location data as needed
+        String dateTime = DateTime.now().toIso8601String();
+        print(dateTime);
+        print('Current position: ${position.latitude}, ${position.longitude}');
+      }
+    }
+  });
+
+  // Access geolocation
+  // Timer.periodic(const Duration(seconds: 5), (timer) async {
+  //   if (service is AndroidServiceInstance) {
+  //     if (await service.isForegroundService()) {
+  //       flutterLocalNotificationsPlugin.show(
+  //         notificationId,
+  //         'Location Notifiation',
+  //         'Awesome ${DateTime.now()}',
+  //         const NotificationDetails(
+  //           android: AndroidNotificationDetails(
+  //             notificationChannelId,
+  //             'MY FOREGROUND SERVICE',
+  //             icon: 'ic_bg_service_small',
+  //             ongoing: true,
+  //           ),
+  //         ),
+  //       );
+  //     }
+  //   }
+  //
+  //   Position position = await Geolocator.getCurrentPosition(
+  //     desiredAccuracy: LocationAccuracy.high,
+  //   );
+  //
+  //   // You can save or process the position data as needed
+  //   print('Locked Current Position: ${position.latitude}, ${position.longitude}');
+  //   //add a post method here;
+  //   String dateTime = DateTime.now().toIso8601String();
+  //   print(dateTime);
+  //   // postLocationData({
+  //   //   'latitude': position.latitude,
+  //   //   'longitude': position.longitude,
+  //   //   'dateTime': dateTime,
+  //   // }
+  //   // );
+  // });
+}
+
+bool onIosBackground(ServiceInstance service) {
+  WidgetsFlutterBinding.ensureInitialized();
+  return true;
+}
+
+
+
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -48,6 +185,11 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _checkPermissionsAndFetchLocation();
+  }
+
+  @override
+  void dispose(){
+
   }
 
   Future<void> _checkPermissionsAndFetchLocation() async {
